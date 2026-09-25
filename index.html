@@ -3,76 +3,263 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Revenge of QZL - نسخه اصلاح شده</title>
-    <!-- استفاده از استایل‌های بهینه شده -->
+    <title>Revenge of QZL</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: system-ui, -apple-system, sans-serif; }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4">
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 pb-20">
+    <div id="app" class="max-w-2xl mx-auto space-y-4">
+        <!-- هدر اصلی -->
+        <header class="flex justify-between items-center p-4 bg-slate-800 rounded-xl border border-slate-700 shadow-md">
+            <h1 class="text-xl font-bold text-indigo-400">Revenge of QZL</h1>
+            <div id="user-status" class="text-xs bg-slate-700 px-3 py-1 rounded-full text-slate-300">
+                نقش: کاربر
+            </div>
+        </header>
 
-    <div class="w-full max-w-md bg-slate-800 rounded-xl shadow-2xl p-6 border border-slate-700">
-        <h1 class="text-2xl font-bold text-center mb-6 text-indigo-400">Revenge of QZL</h1>
-        
-        <!-- بخش نمایش وضعیت کاربر / پنل -->
-        <div id="app-container" class="space-y-4">
-            <p class="text-sm text-slate-400 text-center">سیستم با موفقیت بروزرسانی شد و باگ‌های منطقی و امنیتی رفع گردیدند.</p>
-            
-            <div id="task-box" class="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
-                <h3 id="task-title" class="font-semibold text-lg text-emerald-400">بارگذاری تسک‌ها...</h3>
-                <p id="task-desc" class="text-xs text-slate-300 mt-1">مدیریت تسک‌ها اکنون بر اساس شناسه یکتا (ID) انجام می‌شود.</p>
+        <!-- پنل وضعیت و امتیازات -->
+        <section class="p-4 bg-slate-800 rounded-xl border border-slate-700 flex justify-between items-center">
+            <div>
+                <span class="text-xs text-slate-400 block">مجموع امتیازات</span>
+                <span id="total-points" class="text-lg font-bold text-emerald-400">0</span>
+            </div>
+            <button id="admin-toggle-btn" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 rounded text-xs transition">
+                ورود به پنل مدیریت
+            </button>
+        </section>
+
+        <!-- بخش اصلی نمایش تسک‌ها و اثبات‌ها -->
+        <main id="main-content" class="space-y-4">
+            <div id="task-card" class="p-5 bg-slate-800 rounded-xl border border-slate-700 space-y-3">
+                <h2 id="task-title" class="text-lg font-bold text-indigo-300">در حال دریافت تسک...</h2>
+                <p id="task-desc" class="text-sm text-slate-400">لطفاً شکیبا باشید.</p>
+                
+                <div id="action-area" class="space-y-2 pt-3">
+                    <!-- دکمه‌ها در جاوااسکریپت ساخت می‌شوند -->
+                </div>
             </div>
 
-            <!-- دکمه تست تعاملی امن -->
-            <button id="safe-action-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-all shadow-md">
-                تست عملکرد امن دکمه
-            </button>
-        </div>
+            <!-- لیست اثبات‌های ارسال‌شده -->
+            <div id="proofs-container" class="space-y-3">
+                <h3 class="text-sm font-semibold text-slate-400">وضعیت اثبات‌های اخیر</h3>
+                <div id="proofs-list" class="space-y-2">
+                    <!-- آیتم‌ها به صورت پویا اضافه می‌شوند -->
+                </div>
+            </div>
+        </main>
     </div>
-
     <script>
-        // مدیریت پایگاه داده محلی یا ابری به صورت امن
-        const AppState = {
-            completedTasks: JSON.parse(localStorage.getItem('qzl_completed_tasks') || '[]'),
-            totalPoints: parseInt(localStorage.getItem('qzl_total_points') || '0', 10)
+        // ۱. پایگاه داده و وضعیت برنامه
+        let db = null;
+        const DB_NAME = 'QZL_DB';
+        const DB_VERSION = 1;
+
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        
+        request.onupgradeneeded = (e) => {
+            db = e.target.result;
+            if (!db.objectStoreNames.contains('proofs')) {
+                db.createObjectStore('proofs', { keyPath: 'id' });
+            }
         };
 
-        // ۱. اصلاح باگ منطقی: پیدا کردن تسک بر اساس شناسه یکتا (sub.id) به جای عنوان متنی
-        function findNextAvailableTask(subId) {
-            return AppState.completedTasks.includes(subId);
+        request.onsuccess = (e) => {
+            db = e.target.result;
+            loadApp();
+        };
+
+        function getData() {
+            return JSON.parse(localStorage.getItem('qzl_data') || '{"topics":[]}');
         }
 
-        // ۲. اصلاح کسر ناعادلانه امتیاز در صورت رد اثبات
-        function rejectProofSafely(subId, score, hasReceivedPoints) {
-            const pointsToDeduct = hasReceivedPoints ? score : 0;
-            AppState.totalPoints = Math.max(0, AppState.totalPoints - pointsToDeduct);
-            localStorage.setItem('qzl_total_points', AppState.totalPoints);
-            console.log(`اثبات با شناسه ${subId} رد شد. امتیاز کسر شده: ${pointsToDeduct}`);
-        }
-
-        // ۳. مدیریت حافظه: جلوگیری از نشت حافظه (Memory Leak) در Object URLها
-        function handleMediaPreview(blob) {
-            const objectUrl = URL.createObjectURL(blob);
-            // استفاده از مدیا...
+        // ۲. پیدا کردن تسک بعدی بر اساس شناسه یکتا (sub.id) جهت جلوگیری از حلقه بی‌نهایت
+        function findNextAvailable(callback) {
+            if (!db) return callback(null);
             
-            // پس از اتمام کار یا بستن مؤلفه حتماً آزاد شود:
-            // URL.revokeObjectURL(objectUrl);
-        }
+            const transaction = db.transaction(['proofs'], 'readonly');
+            const store = transaction.objectStore('proofs');
+            const requestAll = store.getAll();
 
-        // مدیریت رویدادها به صورت ایمن بدون استفاده از inline onclick (جلوگیری از XSS)
-        document.addEventListener('DOMContentLoaded', () => {
-            const btn = document.getElementById('safe-action-btn');
-            
-            btn.addEventListener('click', () => {
-                const sampleSubId = "task_101";
-                if (!findNextAvailableTask(sampleSubId)) {
-                    alert("تسک معتبر است و در حلقه بی‌نهایت گیر نمی‌افتد!");
-                    // شبیه‌سازی اتمام تسک با ID
-                    AppState.completedTasks.push(sampleSubId);
-                    localStorage.setItem('qzl_completed_tasks', JSON.stringify(AppState.completedTasks));
-                } else {
-                    alert("این تسک قبلاً انجام شده است.");
+            requestAll.onsuccess = (e) => {
+                const proofs = e.target.result || [];
+                const completedSubIds = proofs.map(p => p.subId);
+
+                const data = getData();
+                for (let t of (data.topics || [])) {
+                    for (let sub of (t.subs || [])) {
+                        if (!completedSubIds.includes(sub.id)) {
+                            return callback({ topic: t, sub: sub });
+                        }
+                    }
                 }
+                callback(null);
+            };
+        }
+
+        // ۳. کسر امن امتیاز در صورت رد اثبات (فقط در صورت تأیید قبلی)
+        function rejectProof(proofId, score) {
+            if (!db) return;
+            const transaction = db.transaction(['proofs'], 'readwrite');
+            const store = transaction.objectStore('proofs');
+            
+            const getReq = store.get(proofId);
+            getReq.onsuccess = (e) => {
+                const proof = e.target.result;
+                if (proof) {
+                    if (proof.status === 'approved') {
+                        let totalPoints = parseInt(localStorage.getItem('qzl_points') || '0', 10);
+                        totalPoints = Math.max(0, totalPoints - score);
+                        localStorage.setItem('qzl_points', totalPoints);
+                    }
+                    proof.status = 'rejected';
+                    store.put(proof);
+                    loadApp();
+                }
+            };
+        }
+
+        // ۴. مدیریت حافظه و آزادسازی Blob URLها
+        let activeObjectURLs = [];
+        function createSafeObjectURL(blob) {
+            const url = URL.createObjectURL(blob);
+            activeObjectURLs.push(url);
+            return url;
+        }
+
+        function cleanupMediaURLs() {
+            activeObjectURLs.forEach(url => URL.revokeObjectURL(url));
+            activeObjectURLs = [];
+        }
+
+        // ۵. بارگذاری و رندر ایمن بدون XSS و بدون کدهای اینلاین
+        function loadApp() {
+            cleanupMediaURLs();
+            
+            // به‌روزرسانی امتیاز کل
+            const totalPointsElem = document.getElementById('total-points');
+            if (totalPointsElem) {
+                totalPointsElem.textContent = localStorage.getItem('qzl_points') || '0';
+            }
+
+            findNextAvailable((result) => {
+                const titleElem = document.getElementById('task-title');
+                const descElem = document.getElementById('task-desc');
+                const actionArea = document.getElementById('action-area');
+                
+                if (!actionArea) return;
+                actionArea.innerHTML = '';
+
+                if (!result) {
+                    titleElem.textContent = "پایان تسک‌ها";
+                    descElem.textContent = "تمامی تسک‌ها با موفقیت انجام شده‌اند.";
+                    return;
+                }
+
+                titleElem.textContent = result.topic.title + ' - ' + result.sub.title;
+                descElem.textContent = "جهت ثبت یا ارسال تنبیه از دکمه‌های زیر استفاده کنید.";
+
+                // ساخت امن دکمه ارسال اثبات
+                const submitBtn = document.createElement('button');
+                submitBtn.className = 'w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-white font-medium transition';
+                submitBtn.textContent = 'ارسال اثبات انجام تسک';
+                submitBtn.addEventListener('click', () => {
+                    submitProofAction(result.sub.id, result.sub.title);
+                });
+
+                // ساخت امن دکمه ارسال تنبیه
+                const punishBtn = document.createElement('button');
+                punishBtn.className = 'w-full py-2.5 bg-rose-600 hover:bg-rose-500 rounded-lg text-white font-medium transition';
+                punishBtn.textContent = 'ارسال تنبیه';
+                punishBtn.addEventListener('click', () => {
+                    submitPunishmentAction(result.sub.id, result.sub.title);
+                });
+
+                actionArea.appendChild(submitBtn);
+                actionArea.appendChild(punishBtn);
             });
-        });
+
+            loadProofsList();
+        }
+
+        function submitProofAction(subId, subTitle) {
+            if (!db) return;
+            const transaction = db.transaction(['proofs'], 'readwrite');
+            const store = transaction.objectStore('proofs');
+            
+            store.add({
+                id: 'proof_' + Date.now(),
+                subId: subId,
+                title: subTitle,
+                status: 'pending',
+                timestamp: Date.now()
+            });
+
+            transaction.oncomplete = () => {
+                alert('اثبات با موفقیت ثبت شد.');
+                loadApp();
+            };
+        }
+
+        function submitPunishmentAction(subId, subTitle) {
+            if (!db) return;
+            const punishText = prompt("متن تنبیه را وارد کنید:");
+            if (!punishText) return;
+
+            const transaction = db.transaction(['proofs'], 'readwrite');
+            const store = transaction.objectStore('proofs');
+            
+            store.add({
+                id: 'proof_' + Date.now(),
+                subId: subId,
+                title: subTitle + ' - تنبیه: ' + punishText,
+                status: 'pending',
+                timestamp: Date.now()
+            });
+
+            transaction.oncomplete = () => {
+                alert('اثبات تنبیه ثبت شد.');
+                loadApp();
+            };
+        }
+
+        function loadProofsList() {
+            if (!db) return;
+            const listElem = document.getElementById('proofs-list');
+            if (!listElem) return;
+
+            const transaction = db.transaction(['proofs'], 'readonly');
+            const store = transaction.objectStore('proofs');
+            const requestAll = store.getAll();
+
+            requestAll.onsuccess = (e) => {
+                const proofs = e.target.result || [];
+                listElem.innerHTML = '';
+
+                if (proofs.length === 0) {
+                    listElem.innerHTML = '<p class="text-xs text-slate-500">هیچ اثباتی هنوز ثبت نشده است.</p>';
+                    return;
+                }
+
+                proofs.forEach(p => {
+                    const item = document.createElement('div');
+                    item.className = 'p-3 bg-slate-800 border border-slate-700 rounded-lg flex justify-between items-center text-xs';
+                    
+                    const titleSpan = document.createElement('span');
+                    titleSpan.className = 'text-slate-200';
+                    titleSpan.textContent = p.title;
+
+                    const statusSpan = document.createElement('span');
+                    statusSpan.className = p.status === 'approved' ? 'text-emerald-400' : (p.status === 'rejected' ? 'text-rose-400' : 'text-amber-400');
+                    statusSpan.textContent = p.status === 'approved' ? 'تأیید شده' : (p.status === 'rejected' ? 'رد شده' : 'در انتظار');
+
+                    item.appendChild(titleSpan);
+                    item.appendChild(statusSpan);
+                    listElem.appendChild(item);
+                });
+            };
+        }
     </script>
 </body>
 </html>
