@@ -89,6 +89,11 @@ input, textarea, select { width: 100%; padding: 12px; border-radius: 8px; backgr
 .led-offline { display: inline-block; width: 10px; height: 10px; background-color: #ef4444; border-radius: 50%; margin-left: 6px; }
 .hidden { display: none; }
 .section-space { margin-bottom: 18px; }
+.clickable-img { cursor: pointer; transition: transform 0.2s; }
+.clickable-img:hover { transform: scale(1.03); }
+#fullscreenModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 100; align-items: center; justify-content: center; flex-direction: column; }
+#fullscreenModal img, #fullscreenModal video { max-width: 95vw; max-height: 85vh; object-fit: contain; border-radius: 8px; }
+#fullscreenModal .close-btn { position: absolute; top: 20px; left: 20px; background: #ff007f; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-size: 16px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -130,12 +135,12 @@ input, textarea, select { width: 100%; padding: 12px; border-radius: 8px; backgr
   <div class="neon-card-pink mb-4" id="progressCard">
     <div class="flex justify-between text-xs mb-1 text-pink-300">
       <span id="currentPoints">۰</span>
-      <span id="goalPoints">هدف: ۰</span>
+      <span>هدف: ۱۰۰۰</span>
     </div>
     <div class="progress-bg">
       <div id="progressFill" class="progress-fill" style="width:0%"></div>
     </div>
-    <div class="text-xs text-gray-400 mt-2 text-center" id="remainText">امتیاز باقی‌مانده: ۰</div>
+    <div class="text-xs text-gray-400 mt-2 text-center" id="remainText">امتیاز باقی‌مانده: ۱۰۰۰</div>
   </div>
 
   <div id="content"></div>
@@ -151,7 +156,7 @@ input, textarea, select { width: 100%; padding: 12px; border-radius: 8px; backgr
 
 <div id="extraModal" class="hidden fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center p-4 z-50">
   <div class="neon-card-pink max-w-md mx-auto w-full text-center max-h-[90vh] overflow-y-auto">
-    <h3 class="text-xl font-bold text-pink-400 mb-3">🚨 سورپرایز Extra!</h3>
+    <h3 class="text-xl font-bold text-pink-400 mb-3">🚨 Extra</h3>
     <div id="extraModalContent" class="text-sm text-gray-200 mb-4 space-y-3 text-right"></div>
     <button onclick="openExtraProofModal()" class="btn-pink">ثبت اثبات Extra (+۵ امتیاز)</button>
   </div>
@@ -166,13 +171,19 @@ input, textarea, select { width: 100%; padding: 12px; border-radius: 8px; backgr
   </div>
 </div>
 
+<div id="fullscreenModal">
+  <button class="close-btn" onclick="closeFullscreen()">✕ بستن</button>
+  <div id="fullscreenContent"></div>
+</div>
+
 <script>
 const PASS = "2550958Bbc";
+const FIXED_GOAL = 1000;
 let db;
 let statusCheckInterval = null;
 let currentActiveExtra = null;
 let extraTimerInstance = null;
-let createdObjectUrls = []; // برای جلوگیری از memory leak
+let createdObjectUrls = [];
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -185,9 +196,7 @@ function escapeHtml(str) {
 }
 
 function revokeAllObjectUrls() {
-  createdObjectUrls.forEach(url => {
-    try { URL.revokeObjectURL(url); } catch(e){}
-  });
+  createdObjectUrls.forEach(url => { try { URL.revokeObjectURL(url); } catch(e){} });
   createdObjectUrls = [];
 }
 
@@ -197,10 +206,24 @@ function createSafeObjectUrl(blob) {
   return url;
 }
 
-const request = indexedDB.open('QzlDatabase', 6);
-request.onerror = (e) => {
-  console.error("خطا در IndexedDB:", e.target.error);
-};
+function openFullscreen(src, type) {
+  const modal = document.getElementById('fullscreenModal');
+  const content = document.getElementById('fullscreenContent');
+  if (type === 'video') {
+    content.innerHTML = `<video src="${src}" controls autoplay style="max-width:95vw;max-height:85vh;"></video>`;
+  } else {
+    content.innerHTML = `<img src="${src}" style="max-width:95vw;max-height:85vh;object-fit:contain;">`;
+  }
+  modal.style.display = 'flex';
+}
+
+function closeFullscreen() {
+  document.getElementById('fullscreenModal').style.display = 'none';
+  document.getElementById('fullscreenContent').innerHTML = '';
+}
+
+const request = indexedDB.open('QzlDatabase', 7);
+request.onerror = (e) => console.error("خطا در IndexedDB:", e.target.error);
 
 request.onsuccess = (e) => { 
   db = e.target.result; 
@@ -265,9 +288,7 @@ function back(){
 
 function logout(){
   const r = localStorage.getItem('role');
-  if(r){
-    localStorage.removeItem('login_time_' + r);
-  }
+  if(r) localStorage.removeItem('login_time_' + r);
   localStorage.setItem('role', 'guest');
   if(statusCheckInterval) clearInterval(statusCheckInterval);
   if(extraTimerInstance) clearTimeout(extraTimerInstance);
@@ -279,8 +300,6 @@ function logout(){
 
 function getData(){ return JSON.parse(localStorage.getItem('topics') || '[]'); }
 function saveData(data){ localStorage.setItem('topics', JSON.stringify(data)); }
-function getGoal(){ return parseInt(localStorage.getItem('goalScore') || '0'); }
-function saveGoal(val){ localStorage.setItem('goalScore', val); }
 function getTotalPoints(){ return parseInt(localStorage.getItem('totalPoints') || '0'); }
 function saveTotalPoints(val){ localStorage.setItem('totalPoints', val); }
 function isGameFinished(){ return localStorage.getItem('gameFinished') === 'true'; }
@@ -289,12 +308,10 @@ function getOnlineDelay(){ return parseInt(localStorage.getItem('ghazal_online_d
 
 function updateProgress(){
   const total = getTotalPoints();
-  const goal = getGoal();
-  const percent = goal > 0 ? Math.min(100, (total / goal) * 100) : 0;
+  const percent = Math.min(100, (total / FIXED_GOAL) * 100);
   document.getElementById('currentPoints').innerText = total;
-  document.getElementById('goalPoints').innerText = 'هدف: ' + goal;
   document.getElementById('progressFill').style.width = percent + '%';
-  document.getElementById('remainText').innerText = 'امتیاز باقی‌مانده: ' + Math.max(0, goal - total);
+  document.getElementById('remainText').innerText = 'امتیاز باقی‌مانده: ' + Math.max(0, FIXED_GOAL - total);
 }
 
 function show(role){
@@ -346,7 +363,6 @@ function checkGhazalOnlineStatus(role){
   if(elapsed <= delayMs || localStorage.getItem('role') === 'ghazal'){
     led.className = 'led-online';
     text.innerText = 'آنلاین';
-
     const popupShownKey = 'popup_shown_' + role;
     if(!localStorage.getItem(popupShownKey) && role !== 'ghazal'){
       localStorage.setItem(popupShownKey, 'true');
@@ -362,10 +378,7 @@ function showPopup(msg){
   document.getElementById('popupMessage').innerText = msg;
   document.getElementById('popupModal').classList.remove('hidden');
 }
-
-function closePopup(){
-  document.getElementById('popupModal').classList.add('hidden');
-}
+function closePopup(){ document.getElementById('popupModal').classList.add('hidden'); }
 
 function renderGhazalMenu(){
   document.getElementById('progressCard').style.display = 'block';
@@ -374,15 +387,15 @@ function renderGhazalMenu(){
   let html = `
     <div class="neon-card-pink text-center cursor-pointer section-space" onclick="renderGhazalTopics()">
       <h3 class="text-pink-400 font-bold text-lg">Create & Edit Topics</h3>
-      <p class="text-xs text-gray-400 mt-2">مدیریت و ساخت تاپیک‌ها، امتیازات و تصاویر پوزیشن‌ها</p>
+      <p class="text-xs text-gray-400 mt-2">مدیریت تاپیک‌ها + آیکون تاپیک</p>
     </div>
     <div class="neon-card-pink text-center cursor-pointer section-space" onclick="renderGhazalSubtopics()">
       <h3 class="text-pink-400 font-bold text-lg">Create & Edit Subtopics</h3>
-      <p class="text-xs text-gray-400 mt-2">مدیریت تسک‌ها، پوزیشن‌ها، تحقیرها، آپلود فایل‌ها و Extra</p>
+      <p class="text-xs text-gray-400 mt-2">تسک‌ها، پوزیشن‌ها، تحقیر، فایل‌ها و Extra</p>
     </div>
     <div class="neon-card-pink text-center cursor-pointer section-space" onclick="renderGhazalSettings()">
       <h3 class="text-pink-400 font-bold text-lg">Settings & Proofs</h3>
-      <p class="text-xs text-gray-400 mt-2">بررسی اثبات‌ها، تنظیمات هدف و پشتیبان‌گیری کامل JSON</p>
+      <p class="text-xs text-gray-400 mt-2">بررسی اثبات‌ها، تنظیمات و پشتیبان‌گیری</p>
     </div>
   `;
   document.getElementById('content').innerHTML = html;
@@ -405,11 +418,8 @@ function renderGhazalTopics(){
         <option value="30">۳۰</option>
       </select>
 
-      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن کیارش:</label>
-      <input type="file" id="newTopicKImg" accept="image/*">
-
-      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن محمد:</label>
-      <input type="file" id="newTopicMImg" accept="image/*">
+      <label class="text-sm text-pink-300 mt-2 block">آیکون تاپیک (عکس یا گیف):</label>
+      <input type="file" id="newTopicIcon" accept="image/*">
 
       <button onclick="addTopic()" class="btn-pink">اضافه کردن تاپیک</button>
     </div>
@@ -423,9 +433,12 @@ function renderGhazalTopics(){
     data.forEach((topic, ti) => {
       html += `
         <div class="bg-gray-900 border border-pink-900 rounded-lg p-3 mb-3 flex justify-between items-center">
-          <div>
-            <div class="font-bold text-sm text-pink-300 mb-1">${escapeHtml(topic.title)}</div>
-            <div class="text-xs text-yellow-500">امتیاز: ${topic.score || 0} | تعداد ساب‌تاپیک‌ها: ${(topic.subs || []).length}</div>
+          <div class="flex items-center gap-3">
+            <div id="topicIcon_${ti}" class="w-12 h-12 rounded overflow-hidden bg-gray-800 flex-shrink-0"></div>
+            <div>
+              <div class="font-bold text-sm text-pink-300 mb-1">${escapeHtml(topic.title)}</div>
+              <div class="text-xs text-yellow-500">امتیاز: ${topic.score || 0} | ساب‌تاپیک: ${(topic.subs || []).length}</div>
+            </div>
           </div>
           <div>
             <button onclick="moveTopic(${ti},-1)" class="btn-sm bg-gray-700">↑</button>
@@ -439,6 +452,26 @@ function renderGhazalTopics(){
   }
   html += `</div>`;
   document.getElementById('content').innerHTML = html;
+  
+  data.forEach((topic, ti) => {
+    loadTopicIcon(ti, function(url) {
+      const el = document.getElementById('topicIcon_' + ti);
+      if (el && url) el.innerHTML = `<img src="${url}" class="w-full h-full object-cover">`;
+    });
+  });
+}
+
+function loadTopicIcon(ti, callback) {
+  if (!db) { callback(null); return; }
+  const transaction = db.transaction(['topicImages'], 'readonly');
+  const store = transaction.objectStore('topicImages');
+  const req = store.get('topic_' + ti + '_icon');
+  req.onsuccess = function() {
+    if (req.result && req.result.blob) {
+      callback(createSafeObjectUrl(req.result.blob));
+    } else callback(null);
+  };
+  req.onerror = () => callback(null);
 }
 
 function renderGhazalSubtopics(){
@@ -485,32 +518,27 @@ function renderGhazalSettings(){
     <button onclick="renderGhazalMenu()" class="btn2 mb-4">← بازگشت به منوی اصلی غزال</button>
     
     <div class="neon-card-pink section-space">
-      <h3 class="text-pink-400 font-bold mb-3">پشتیبان‌گیری کامل اطلاعات</h3>
-      <p class="text-xs text-gray-400 mb-3">خروجی فقط اطلاعات متنی و تنظیمات را می‌گیرد (مدیاها در IndexedDB هستند).</p>
-      <button onclick="exportDataJSON()" class="btn-pink mb-2">خروجی گرفتن از اطلاعات (Export JSON)</button>
-      
-      <label class="text-sm text-gray-400 mt-3 block">بارگذاری فایل پشتیبان (Import):</label>
+      <h3 class="text-pink-400 font-bold mb-3">پشتیبان‌گیری</h3>
+      <button onclick="exportDataJSON()" class="btn-pink mb-2">خروجی گرفتن (Export JSON)</button>
+      <label class="text-sm text-gray-400 mt-3 block">بارگذاری فایل پشتیبان:</label>
       <input type="file" id="importFile" accept="*/*" class="mb-2">
-      <button onclick="importDataJSON()" class="btn2">بارگذاری و جایگزینی اطلاعات</button>
+      <button onclick="importDataJSON()" class="btn2">بارگذاری و جایگزینی</button>
     </div>
 
     <div class="neon-card-pink section-space">
       <h3 class="text-pink-400 font-bold mb-3">تنظیمات وضعیت آنلاین غزال</h3>
-      <label class="text-sm text-gray-400">تاخیر آنلاین شدن پس از ورود محمد/کیارش (دقیقه، حداکثر ۳۰):</label>
+      <label class="text-sm text-gray-400">تاخیر آنلاین شدن (دقیقه، حداکثر ۳۰):</label>
       <input id="onlineDelayInput" type="number" min="1" max="30" value="${currentDelay}">
-      <button onclick="saveOnlineDelay()" class="btn-pink">ذخیره تنظیمات آنلاین</button>
+      <button onclick="saveOnlineDelay()" class="btn-pink">ذخیره</button>
     </div>
 
     <div class="neon-card-pink section-space">
-      <h3 class="text-pink-400 font-bold mb-3">وضعیت بازی و هدف</h3>
+      <h3 class="text-pink-400 font-bold mb-3">وضعیت بازی</h3>
       <p class="text-sm mb-3">${finished ? '<span class="text-green-400">بازی به پایان رسیده</span>' : '<span class="text-yellow-400">بازی در حال انجام است</span>'}</p>
       ${finished 
         ? '<button onclick="setGameFinished(false); renderGhazalSettings();" class="btn2 mb-3">باز کردن دوباره بازی</button>'
         : '<button onclick="finishGame()" class="btn-pink mb-3">اعلام پایان بازی</button>'}
-      
-      <label class="text-sm text-gray-400">امتیاز هدف نهایی</label>
-      <input id="goalInput" type="number" placeholder="امتیاز هدف" value="${getGoal()}">
-      <button onclick="setGoal()" class="btn-pink">ذخیره هدف</button>
+      <p class="text-xs text-gray-400 mt-2">هدف ثابت: ۱۰۰۰ امتیاز</p>
     </div>
 
     <div class="neon-card-pink">
@@ -528,50 +556,39 @@ function renderGhazalSettings(){
 function exportDataJSON(){
   const backupData = {
     topics: getData(),
-    goalScore: getGoal(),
     totalPoints: getTotalPoints(),
     gameFinished: isGameFinished(),
     ghazalOnlineDelay: getOnlineDelay()
   };
-  
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backupData, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", "revenge_of_qzl_complete_backup.json");
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
+  const a = document.createElement('a');
+  a.href = dataStr;
+  a.download = "revenge_of_qzl_backup.json";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 function importDataJSON(){
   const fileInput = document.getElementById('importFile');
-  if(!fileInput.files || !fileInput.files[0]) {
-    alert('لطفاً ابتدا یک فایل انتخاب کنید.');
-    return;
-  }
-  
-  const file = fileInput.files[0];
+  if(!fileInput.files || !fileInput.files[0]) return alert('لطفاً ابتدا یک فایل انتخاب کنید.');
   const reader = new FileReader();
-  
   reader.onload = function(e) {
     try {
       const parsed = JSON.parse(e.target.result);
       if(parsed.topics) localStorage.setItem('topics', JSON.stringify(parsed.topics));
-      if(parsed.goalScore !== undefined) localStorage.setItem('goalScore', parsed.goalScore);
       if(parsed.totalPoints !== undefined) localStorage.setItem('totalPoints', parsed.totalPoints);
       if(parsed.gameFinished !== undefined) localStorage.setItem('gameFinished', parsed.gameFinished);
       if(parsed.ghazalOnlineDelay !== undefined) localStorage.setItem('ghazal_online_delay', parsed.ghazalOnlineDelay);
-      
-      alert('اطلاعات کامل با موفقیت ایمپورت و بارگذاری شد!');
+      alert('اطلاعات با موفقیت ایمپورت شد!');
       fileInput.value = '';
       renderGhazalSettings();
     } catch(err) {
-      alert('خطا در خواندن فایل. ساختار فایل معتبر نیست یا JSON نیست.');
+      alert('خطا در خواندن فایل.');
       fileInput.value = '';
     }
   };
-  
-  reader.readAsText(file);
+  reader.readAsText(fileInput.files[0]);
 }
 
 function saveOnlineDelay(){
@@ -579,7 +596,7 @@ function saveOnlineDelay(){
   if(val > 30) val = 30;
   if(val < 1) val = 1;
   localStorage.setItem('ghazal_online_delay', val);
-  alert('تنظیمات آنلاین شدن غزال ذخیره شد (' + val + ' دقیقه)');
+  alert('تنظیمات ذخیره شد (' + val + ' دقیقه)');
 }
 
 function finishGame(){
@@ -598,10 +615,6 @@ function loadProofs(){
   const transaction = db.transaction(['proofs'], 'readonly');
   const store = transaction.objectStore('proofs');
   const requestAll = store.getAll();
-
-  requestAll.onerror = function() {
-    document.getElementById('proofsArea').innerHTML = '<p class="text-red-400 text-sm">خطا در خواندن اطلاعات کش‌شده</p>';
-  };
 
   requestAll.onsuccess = function() {
     const proofs = requestAll.result || [];
@@ -622,7 +635,7 @@ function loadProofs(){
           <div class="text-xs text-gray-400 mb-2">فرستنده: ${p.by === 'mohammad' ? 'محمد' : 'کیارش'} | امتیاز: ${p.score || 0}</div>
           <div class="text-xs mb-2 ${statusColor}">${statusText}</div>
           <div class="mb-2">
-            ${p.type === 'photo' ? `<img src="${fileUrl}" class="max-w-full rounded max-h-40 object-contain">` : ''}
+            ${p.type === 'photo' ? `<img src="${fileUrl}" class="max-w-full rounded max-h-40 object-contain clickable-img" onclick="openFullscreen('${fileUrl}','photo')">` : ''}
             ${p.type === 'video' ? `<video src="${fileUrl}" controls class="w-full rounded max-h-40"></video>` : ''}
             ${p.type === 'audio' ? `<audio src="${fileUrl}" controls class="w-full"></audio>` : ''}
           </div>
@@ -639,15 +652,8 @@ function loadProofs(){
   };
 }
 
-function approveProof(id){
-  updateProofStatus(id, 'approved');
-}
-
-function rejectProof(id){
-  // امتیاز فقط موقع تأیید اضافه می‌شود، پس موقع رد هیچی کم نمی‌کنیم
-  updateProofStatus(id, 'rejected');
-  alert('اثبات رد شد (امتیازی کسر نشد چون هنوز اضافه نشده بود)');
-}
+function approveProof(id){ updateProofStatus(id, 'approved'); }
+function rejectProof(id){ updateProofStatus(id, 'rejected'); alert('اثبات رد شد'); }
 
 function updateProofStatus(id, status){
   const transaction = db.transaction(['proofs'], 'readwrite');
@@ -657,14 +663,11 @@ function updateProofStatus(id, status){
     const proof = getReq.result;
     if(proof){
       if(status === 'approved' && proof.status !== 'approved'){
-        const current = getTotalPoints();
-        saveTotalPoints(current + (proof.score || 0));
+        saveTotalPoints(getTotalPoints() + (proof.score || 0));
         updateProgress();
       }
-      // اگر قبلاً تأیید شده بود و الان رد می‌شود، امتیاز را کم کن
       if(status === 'rejected' && proof.status === 'approved'){
-        const current = getTotalPoints();
-        saveTotalPoints(Math.max(0, current - (proof.score || 0)));
+        saveTotalPoints(Math.max(0, getTotalPoints() - (proof.score || 0)));
         updateProgress();
       }
       proof.status = status;
@@ -696,104 +699,65 @@ function renderView(role){
     }
 
     const s = next.sub;
-    const t = next.topic;
     const taskStateKey = 'task_state_' + role + '_' + next.ti + '_' + next.si;
     const isStarted = localStorage.getItem(taskStateKey) === 'started';
 
-    // بارگذاری تصاویر تاپیک از IndexedDB
-    loadTopicImages(next.ti, function(kImgUrl, mImgUrl) {
-      html += `
-        <div class="bg-black border border-gray-800 rounded-lg p-4 section-space">
-          <div class="text-xs text-gray-400 mb-2">${escapeHtml(next.topicTitle)}</div>
-          <div class="font-bold text-lg mb-3 text-pink-300">Task: ${escapeHtml(s.title)}</div>
-          <div class="text-xs text-yellow-500 mb-3">امتیاز این تسک: ${next.score}</div>
-          
-          <div class="text-xs text-gray-300 space-y-2 mb-4">
-            <div class="font-medium text-white">پوزیشن کیارش: ${escapeHtml(s.kPos || '—')}</div>
-            ${kImgUrl ? `<div class="mt-1"><img src="${kImgUrl}" class="rounded max-h-36 max-w-full object-contain border border-purple-900"></div>` : ''}
+    html += `
+      <div class="bg-black border border-gray-800 rounded-lg p-4 section-space">
+        <div class="text-xs text-gray-400 mb-2">${escapeHtml(next.topicTitle)}</div>
+        <div class="font-bold text-lg mb-3 text-pink-300">Task: ${escapeHtml(s.title)}</div>
+        <div class="text-xs text-yellow-500 mb-3">امتیاز این تسک: ${next.score}</div>
+        
+        <div class="text-xs text-gray-300 space-y-2 mb-4">
+          <div class="font-medium text-white">پوزیشن کیارش: ${escapeHtml(s.kPos || '—')}</div>
+          ${s.kImg ? `<div class="mt-1"><img src="${s.kImg}" class="rounded max-h-36 max-w-full object-contain border border-purple-900 clickable-img" onclick="openFullscreen('${s.kImg}','photo')"></div>` : ''}
 
-            <div class="font-medium text-white mt-2">پوزیشن محمد: ${escapeHtml(s.mPos || '—')}</div>
-            ${mImgUrl ? `<div class="mt-1"><img src="${mImgUrl}" class="rounded max-h-36 max-w-full object-contain border border-blue-900"></div>` : ''}
+          <div class="font-medium text-white mt-2">پوزیشن محمد: ${escapeHtml(s.mPos || '—')}</div>
+          ${s.mImg ? `<div class="mt-1"><img src="${s.mImg}" class="rounded max-h-36 max-w-full object-contain border border-blue-900 clickable-img" onclick="openFullscreen('${s.mImg}','photo')"></div>` : ''}
 
-            <div class="mt-2">آه و ناله: ${s.moan ? 'الزامی' : 'نیاز نیست'}</div>
-            ${s.hum ? `<div class="text-red-400 mt-1">تحقیر: ${escapeHtml(s.hum)}</div>` : ''}
-            <div class="mt-1">نوع اثبات: ${s.proof === 'photo' ? 'عکس' : s.proof === 'video' ? 'ویدیو' : 'صدا'}</div>
-          </div>
-
-          <div id="mediaArea" class="mb-4"><p class="text-xs text-gray-500">در حال بارگذاری فایل‌های دستورالعمل غزال...</p></div>
-          
-          <div id="manualAudioPlayBox" class="hidden mb-3">
-            <button onclick="playManualAudio()" class="btn2 flex items-center justify-center gap-2">🔊 پخش صوت دستورالعمل غزال</button>
-          </div>
-
-          <button id="startTaskBtn" onclick="startTask(${next.ti}, ${next.si}, '${role}')" class="btn-green ${isStarted ? 'btn-started' : ''}">${isStarted ? 'در حال انجام' : 'شروع'}</button>
-          
-          <button onclick="openProof(${next.ti}, ${next.si}, '${role}')" class="${role === 'mohammad' ? 'btn-blue' : 'btn-purple'} mt-3">ثبت اثبات این تسک</button>
-          <button onclick="showPunishments(${next.ti}, ${next.si}, '${role}')" class="btn2 mt-2">رد کردن این تسک (انتخاب تنبیه)</button>
+          <div class="mt-2">آه و ناله: ${s.moan ? 'الزامی' : 'نیاز نیست'}</div>
+          ${s.hum ? `<div class="text-red-400 mt-1">تحقیر: ${escapeHtml(s.hum)}</div>` : ''}
+          <div class="mt-1">نوع اثبات: ${s.proof === 'photo' ? 'عکس' : s.proof === 'video' ? 'ویدیو' : 'صدا'}</div>
         </div>
-      `;
-      document.getElementById('content').innerHTML = html;
-      loadMediaForSub(s.id || (next.ti + '_' + next.si), role);
 
-      if(isStarted && s.extra && s.extra.enabled){
-        setupExtraTimer(s, next.ti, next.si, role);
-      }
-    });
+        <div id="mediaArea" class="mb-4"><p class="text-xs text-gray-500">در حال بارگذاری فایل‌های دستورالعمل غزال...</p></div>
+        
+        <div id="manualAudioPlayBox" class="hidden mb-3">
+          <button onclick="playManualAudio()" class="btn2 flex items-center justify-center gap-2">🔊 پخش صوت دستورالعمل غزال</button>
+        </div>
+
+        <button id="startTaskBtn" onclick="startTask(${next.ti}, ${next.si}, '${role}')" class="btn-green ${isStarted ? 'btn-started' : ''}">${isStarted ? 'در حال انجام' : 'شروع'}</button>
+        
+        <button onclick="openProof(${next.ti}, ${next.si}, '${role}')" class="${role === 'mohammad' ? 'btn-blue' : 'btn-purple'} mt-3">ثبت اثبات این تسک</button>
+        <button onclick="showPunishments(${next.ti}, ${next.si}, '${role}')" class="btn2 mt-2">رد کردن این تسک (انتخاب تنبیه)</button>
+      </div>
+    `;
+    document.getElementById('content').innerHTML = html;
+    loadMediaForSub(s.id || (next.ti + '_' + next.si), role);
+
+    if(isStarted && s.extra && s.extra.enabled){
+      setupExtraTimer(s, next.ti, next.si, role);
+    }
   });
-}
-
-function loadTopicImages(ti, callback) {
-  if (!db) { callback(null, null); return; }
-  const transaction = db.transaction(['topicImages'], 'readonly');
-  const store = transaction.objectStore('topicImages');
-  const kReq = store.get('topic_' + ti + '_k');
-  const mReq = store.get('topic_' + ti + '_m');
-  
-  let kUrl = null, mUrl = null;
-  let done = 0;
-  
-  kReq.onsuccess = function() {
-    if (kReq.result && kReq.result.blob) {
-      kUrl = createSafeObjectUrl(kReq.result.blob);
-    }
-    done++;
-    if (done === 2) callback(kUrl, mUrl);
-  };
-  mReq.onsuccess = function() {
-    if (mReq.result && mReq.result.blob) {
-      mUrl = createSafeObjectUrl(mReq.result.blob);
-    }
-    done++;
-    if (done === 2) callback(kUrl, mUrl);
-  };
-  kReq.onerror = mReq.onerror = function() {
-    done++;
-    if (done === 2) callback(kUrl, mUrl);
-  };
 }
 
 function startTask(ti, si, role){
   const taskStateKey = 'task_state_' + role + '_' + ti + '_' + si;
   localStorage.setItem(taskStateKey, 'started');
-  
   const btn = document.getElementById('startTaskBtn');
   if(btn){
     btn.innerText = 'در حال انجام';
     btn.className = 'btn-green btn-started';
   }
-
   const data = getData();
   const s = data[ti].subs[si];
-  if(s.extra && s.extra.enabled){
-    setupExtraTimer(s, ti, si, role);
-  }
+  if(s.extra && s.extra.enabled) setupExtraTimer(s, ti, si, role);
 }
 
 let activeAudioElement = null;
 
 function loadMediaForSub(subId, role){
   if(!db) return;
-  revokeAllObjectUrls();
   const transaction = db.transaction(['media'], 'readonly');
   const store = transaction.objectStore('media');
   const requestAll = store.getAll();
@@ -811,7 +775,7 @@ function loadMediaForSub(subId, role){
 
     media.forEach(m => {
       const url = createSafeObjectUrl(m.blob);
-      if(m.type === 'photo') html += `<img src="${url}" class="max-w-full rounded mb-2 max-h-40">`;
+      if(m.type === 'photo') html += `<img src="${url}" class="max-w-full rounded mb-2 max-h-40 clickable-img" onclick="openFullscreen('${url}','photo')">`;
       else if(m.type === 'video') html += `<video src="${url}" controls class="w-full rounded mb-2 max-h-40"></video>`;
       else {
         audioBlobUrl = url;
@@ -823,10 +787,7 @@ function loadMediaForSub(subId, role){
     if(audioBlobUrl){
       activeAudioElement = new Audio(audioBlobUrl);
       document.getElementById('manualAudioPlayBox').classList.remove('hidden');
-      
-      activeAudioElement.play().catch(err => {
-        console.log("مرورگر اجازه پخش خودکار بدون تعامل را نداد:", err);
-      });
+      activeAudioElement.play().catch(() => {});
     } else {
       const box = document.getElementById('manualAudioPlayBox');
       if(box) box.classList.add('hidden');
@@ -844,10 +805,8 @@ function playManualAudio(){
 function setupExtraTimer(s, ti, si, role){
   const extraKey = 'extra_shown_' + role + '_' + ti + '_' + si;
   if(localStorage.getItem(extraKey) === 'true') return;
-
   const delaySeconds = parseInt(s.extra.delay) || 30;
   if(extraTimerInstance) clearTimeout(extraTimerInstance);
-
   extraTimerInstance = setTimeout(() => {
     localStorage.setItem(extraKey, 'true');
     showExtraModal(s.extra, ti, si, role);
@@ -859,7 +818,7 @@ function showExtraModal(extraData, ti, si, role){
   let html = `<p class="font-medium text-pink-300">${escapeHtml(extraData.text || '')}</p>`;
   
   if(extraData.img){
-    html += `<div class="mt-2"><img src="${extraData.img}" class="rounded max-h-48 max-w-full mx-auto object-contain"></div>`;
+    html += `<div class="mt-2"><img src="${extraData.img}" class="rounded max-h-48 max-w-full mx-auto object-contain clickable-img" onclick="openFullscreen('${extraData.img}','photo')"></div>`;
   }
   if(extraData.audio){
     html += `<div class="mt-2"><audio src="${extraData.audio}" controls class="w-full"></audio></div>`;
@@ -876,7 +835,6 @@ function openExtraProofModal(){
   document.getElementById('extraModal').classList.add('hidden');
   document.getElementById('extraProofModal').classList.remove('hidden');
 }
-
 function closeExtraProofModal(){
   document.getElementById('extraProofModal').classList.add('hidden');
   document.getElementById('extraModal').classList.remove('hidden');
@@ -899,20 +857,12 @@ function submitExtraProof(){
   
   const proofItem = {
     title: 'Extra: ' + s.title,
-    type: type,
-    blob: file,
-    by: role,
-    score: 5,
-    status: 'pending',
-    isExtra: true,
-    subId: s.id,
-    ti: ti,
-    si: si,
-    time: Date.now()
+    type: type, blob: file, by: role, score: 5, status: 'pending',
+    isExtra: true, subId: s.id, ti: ti, si: si, time: Date.now()
   };
 
   store.add(proofItem).onsuccess = function() {
-    alert('اثبات Extra با موفقیت ارسال شد (۵ امتیاز پس از تایید غزال اضافه خواهد شد)');
+    alert('اثبات Extra ارسال شد (+۵ امتیاز پس از تایید)');
     document.getElementById('extraProofModal').classList.add('hidden');
     fileInput.value = '';
     renderView(role);
@@ -927,7 +877,6 @@ function showPunishments(ti, si, role){
   const cardClass = role === 'mohammad' ? 'neon-card-blue' : 'neon-card-purple';
   const btnClass = role === 'mohammad' ? 'btn-blue' : 'btn-purple';
 
-  // ذخیره متن تنبیه‌ها در data attribute برای جلوگیری از مشکل کوتیشن
   document.getElementById('content').innerHTML = `
     <div class="${cardClass}">
       <h3 class="${role === 'mohammad' ? 'text-blue-400' : 'text-purple-400'} font-bold mb-3">انتخاب تنبیه</h3>
@@ -937,13 +886,8 @@ function showPunishments(ti, si, role){
       <button onclick="renderView('${role}')" class="btn2">انصراف</button>
     </div>
   `;
-  
-  document.getElementById('punishBtn1').onclick = function() {
-    choosePunishment(ti, si, role, p1, 1);
-  };
-  document.getElementById('punishBtn2').onclick = function() {
-    choosePunishment(ti, si, role, p2, 2);
-  };
+  document.getElementById('punishBtn1').onclick = () => choosePunishment(ti, si, role, p1, 1);
+  document.getElementById('punishBtn2').onclick = () => choosePunishment(ti, si, role, p2, 2);
 }
 
 function choosePunishment(ti, si, role, punishText, num){
@@ -959,10 +903,7 @@ function choosePunishment(ti, si, role, punishText, num){
       <button onclick="renderView('${role}')" class="btn2 mt-2">انصراف</button>
     </div>
   `;
-  
-  document.getElementById('submitPunishBtn').onclick = function() {
-    submitPunishment(ti, si, role, punishText);
-  };
+  document.getElementById('submitPunishBtn').onclick = () => submitPunishment(ti, si, role, punishText);
 }
 
 function submitPunishment(ti, si, role, punishText){
@@ -981,16 +922,8 @@ function submitPunishment(ti, si, role, punishText){
   
   const proofItem = {
     title: s.title + ' - تنبیه: ' + punishText,
-    type: type,
-    blob: file,
-    by: role,
-    score: 0,
-    status: 'pending',
-    isPunishment: true,
-    subId: s.id,
-    ti: ti,
-    si: si,
-    time: Date.now()
+    type: type, blob: file, by: role, score: 0, status: 'pending',
+    isPunishment: true, subId: s.id, ti: ti, si: si, time: Date.now()
   };
 
   store.add(proofItem).onsuccess = function() {
@@ -999,57 +932,29 @@ function submitPunishment(ti, si, role, punishText){
   };
 }
 
-function setGoal(){
-  const val = parseInt(document.getElementById('goalInput').value) || 0;
-  saveGoal(val);
-  updateProgress();
-  alert('هدف ذخیره شد');
-}
-
 function addTopic(){
   const title = document.getElementById('newTopic').value.trim();
   const score = parseInt(document.getElementById('newScore').value);
   if(!title) return alert('اسم تاپیک را بنویس');
   
-  const kImgInput = document.getElementById('newTopicKImg');
-  const mImgInput = document.getElementById('newTopicMImg');
-
+  const iconInput = document.getElementById('newTopicIcon');
   const data = getData();
-  const newTop = {title: title, score: score, subs: []};
-  data.push(newTop);
+  data.push({title: title, score: score, subs: []});
   saveData(data);
   const ti = data.length - 1;
 
-  let filesToProcess = 0;
-  if(kImgInput.files && kImgInput.files[0]) filesToProcess++;
-  if(mImgInput.files && mImgInput.files[0]) filesToProcess++;
-
-  if(filesToProcess === 0){
+  if(iconInput.files && iconInput.files[0]){
+    saveTopicIcon(ti, iconInput.files[0], () => renderGhazalTopics());
+  } else {
     renderGhazalTopics();
-    return;
-  }
-
-  let processed = 0;
-  function checkDone() {
-    processed++;
-    if(processed === filesToProcess){
-      renderGhazalTopics();
-    }
-  }
-
-  if(kImgInput.files && kImgInput.files[0]){
-    saveTopicImage(ti, 'k', kImgInput.files[0], checkDone);
-  }
-  if(mImgInput.files && mImgInput.files[0]){
-    saveTopicImage(ti, 'm', mImgInput.files[0], checkDone);
   }
 }
 
-function saveTopicImage(ti, type, file, callback) {
+function saveTopicIcon(ti, file, callback) {
   if (!db) { if(callback) callback(); return; }
   const transaction = db.transaction(['topicImages'], 'readwrite');
   const store = transaction.objectStore('topicImages');
-  store.put({ key: 'topic_' + ti + '_' + type, blob: file, type: file.type }).onsuccess = function() {
+  store.put({ key: 'topic_' + ti + '_icon', blob: file, type: file.type }).onsuccess = function() {
     if(callback) callback();
   };
 }
@@ -1062,7 +967,6 @@ function moveTopic(ti, dir){
   data[ti] = data[newIndex];
   data[newIndex] = temp;
   saveData(data);
-  // جابجایی تصاویر هم لازم است اما برای سادگی فعلاً نادیده گرفته می‌شود
   renderGhazalTopics();
 }
 
@@ -1084,37 +988,29 @@ function editTopic(ti){
         <option value="30" ${t.score==30?'selected':''}>۳۰</option>
       </select>
 
-      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن کیارش:</label>
-      <div id="currentKImg" class="mb-2"></div>
-      <input type="file" id="editTopicKImg" accept="image/*">
-
-      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن محمد:</label>
-      <div id="currentMImg" class="mb-2"></div>
-      <input type="file" id="editTopicMImg" accept="image/*">
+      <label class="text-sm text-pink-300 mt-2 block">آیکون تاپیک (عکس یا گیف):</label>
+      <div id="currentIcon" class="mb-2"></div>
+      <input type="file" id="editTopicIcon" accept="image/*">
 
       <button onclick="saveTopic(${ti})" class="btn-pink">ذخیره</button>
       <button onclick="renderGhazalTopics()" class="btn2 mt-2">انصراف</button>
     </div>
   `;
   
-  // نمایش تصاویر فعلی
-  loadTopicImages(ti, function(kUrl, mUrl) {
-    if(kUrl) {
-      document.getElementById('currentKImg').innerHTML = `<img src="${kUrl}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'k')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button>`;
-    }
-    if(mUrl) {
-      document.getElementById('currentMImg').innerHTML = `<img src="${mUrl}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'm')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button>`;
+  loadTopicIcon(ti, function(url) {
+    if(url) {
+      document.getElementById('currentIcon').innerHTML = `
+        <img src="${url}" class="max-h-24 rounded">
+        <button onclick="removeTopicIcon(${ti})" class="text-red-400 text-xs underline mt-1 block">حذف آیکون</button>`;
     }
   });
 }
 
-function removeTopicImg(ti, target){
+function removeTopicIcon(ti){
   if (!db) return;
   const transaction = db.transaction(['topicImages'], 'readwrite');
   const store = transaction.objectStore('topicImages');
-  store.delete('topic_' + ti + '_' + target).onsuccess = function() {
-    editTopic(ti);
-  };
+  store.delete('topic_' + ti + '_icon').onsuccess = () => editTopic(ti);
 }
 
 function saveTopic(ti){
@@ -1123,26 +1019,12 @@ function saveTopic(ti){
   data[ti].score = parseInt(document.getElementById('editScore').value);
   saveData(data);
 
-  const kFile = document.getElementById('editTopicKImg').files[0];
-  const mFile = document.getElementById('editTopicMImg').files[0];
-
-  let pending = 0;
-  if(kFile) pending++;
-  if(mFile) pending++;
-
-  if(pending === 0){
+  const iconFile = document.getElementById('editTopicIcon').files[0];
+  if(iconFile){
+    saveTopicIcon(ti, iconFile, () => renderGhazalTopics());
+  } else {
     renderGhazalTopics();
-    return;
   }
-
-  let done = 0;
-  function checkDone() {
-    done++;
-    if(done === pending) renderGhazalTopics();
-  }
-
-  if(kFile) saveTopicImage(ti, 'k', kFile, checkDone);
-  if(mFile) saveTopicImage(ti, 'm', mFile, checkDone);
 }
 
 function delTopic(i){
@@ -1150,7 +1032,6 @@ function delTopic(i){
   const data = getData();
   data.splice(i, 1);
   saveData(data);
-  // تصاویر مربوطه هم پاک می‌شوند در نسخه بعدی
   renderGhazalTopics();
 }
 
@@ -1161,7 +1042,7 @@ function addSub(ti){
   if(!data[ti].subs) data[ti].subs = [];
   const subId = 'sub_' + Date.now() + '_' + Math.floor(Math.random()*1000);
   data[ti].subs.push({
-    id: subId, title: title, kPos:'', mPos:'', moan:false, hum:'', p1:'', p2:'', proof:'photo',
+    id: subId, title: title, kPos:'', mPos:'', kImg:'', mImg:'', moan:false, hum:'', p1:'', p2:'', proof:'photo',
     extra: { enabled: false, delay: 30, text: '', img: '', audio: '', video: '' }
   });
   saveData(data);
@@ -1184,11 +1065,18 @@ function editSub(ti, si){
   document.getElementById('content').innerHTML = `
     <div class="neon-card-pink">
       <h3 class="text-pink-400 font-bold mb-3">ویرایش Task: ${escapeHtml(s.title)}</h3>
+      
       <label class="text-sm text-gray-400">پوزیشن کیارش (متن)</label>
       <input id="kPos" value="${escapeHtml(s.kPos || '')}">
+      <label class="text-sm text-pink-300 mt-2 block">عکس/گیف پوزیشن کیارش:</label>
+      ${s.kImg ? `<div class="mb-2"><img src="${s.kImg}" class="max-h-24 rounded clickable-img" onclick="openFullscreen('${s.kImg}','photo')"><button onclick="removeSubImg(${ti},${si},'k')" class="text-red-400 text-xs underline mt-1 block">حذف</button></div>` : ''}
+      <input type="file" id="subKImg" accept="image/*">
 
       <label class="text-sm text-gray-400 mt-2">پوزیشن محمد (متن)</label>
       <input id="mPos" value="${escapeHtml(s.mPos || '')}">
+      <label class="text-sm text-pink-300 mt-2 block">عکس/گیف پوزیشن محمد:</label>
+      ${s.mImg ? `<div class="mb-2"><img src="${s.mImg}" class="max-h-24 rounded clickable-img" onclick="openFullscreen('${s.mImg}','photo')"><button onclick="removeSubImg(${ti},${si},'m')" class="text-red-400 text-xs underline mt-1 block">حذف</button></div>` : ''}
+      <input type="file" id="subMImg" accept="image/*">
 
       <label class="flex items-center gap-2 text-sm my-3">
         <input type="checkbox" id="moan" ${s.moan ? 'checked' : ''}>
@@ -1211,15 +1099,21 @@ function editSub(ti, si){
         <option value="audio" ${s.proof==='audio'?'selected':''}>صدا</option>
       </select>
 
-      <label class="text-sm text-pink-300 mt-3 block font-bold">مدیریت بخش Extra</label>
+      <label class="text-sm text-pink-300 mt-3 block font-bold">Extra</label>
       <label class="flex items-center gap-2 text-sm my-2">
         <input type="checkbox" id="extraEnabled" ${s.extra.enabled ? 'checked' : ''}>
-        فعال‌سازی سورپرایز Extra برای این Task
+        فعال‌سازی Extra برای این Task
       </label>
       <label class="text-sm text-gray-400">زمان تاخیر نمایش (ثانیه):</label>
       <input id="extraDelay" type="number" value="${s.extra.delay || 30}">
       <label class="text-sm text-gray-400">متن پیام Extra:</label>
       <textarea id="extraText" rows="2">${escapeHtml(s.extra.text || '')}</textarea>
+
+      <label class="text-sm text-pink-300 mt-2 block">آپلود مدیا برای Extra (عکس/ویدیو/صدا):</label>
+      ${s.extra.img ? `<div class="mb-1"><img src="${s.extra.img}" class="max-h-20 rounded"></div>` : ''}
+      ${s.extra.video ? `<div class="mb-1"><video src="${s.extra.video}" controls class="max-h-20 w-full"></video></div>` : ''}
+      ${s.extra.audio ? `<div class="mb-1"><audio src="${s.extra.audio}" controls class="w-full"></audio></div>` : ''}
+      <input type="file" id="extraMedia" accept="image/*,video/*,audio/*">
 
       <label class="text-sm text-pink-300 mt-3 block">آپلود فایل‌های دستورالعمل اصلی (چندتایی)</label>
       <input type="file" id="mediaFiles" multiple accept="image/*,video/*,audio/*">
@@ -1231,6 +1125,14 @@ function editSub(ti, si){
     </div>
   `;
   loadCurrentMedia(s.id);
+}
+
+function removeSubImg(ti, si, target){
+  const data = getData();
+  if(target === 'k') data[ti].subs[si].kImg = '';
+  if(target === 'm') data[ti].subs[si].mImg = '';
+  saveData(data);
+  editSub(ti, si);
 }
 
 function loadCurrentMedia(subId){
@@ -1251,7 +1153,7 @@ function loadCurrentMedia(subId){
     media.forEach(m => {
       const url = createSafeObjectUrl(m.blob);
       html += `<div class="mb-2">`;
-      if(m.type === 'photo') html += `<img src="${url}" class="max-w-full rounded max-h-28">`;
+      if(m.type === 'photo') html += `<img src="${url}" class="max-w-full rounded max-h-28 clickable-img" onclick="openFullscreen('${url}','photo')">`;
       else if(m.type === 'video') html += `<video src="${url}" controls class="w-full rounded max-h-28"></video>`;
       else html += `<audio src="${url}" controls class="w-full"></audio>`;
       html += `<button onclick="deleteMedia(${m.id}, '${subId}')" class="text-red-400 text-xs mt-1 underline cursor-pointer block">حذف این فایل</button></div>`;
@@ -1269,7 +1171,6 @@ function uploadMedia(subId){
     let type = 'photo';
     if(file.type.startsWith('video')) type = 'video';
     else if(file.type.startsWith('audio')) type = 'audio';
-
     const transaction = db.transaction(['media'], 'readwrite');
     const store = transaction.objectStore('media');
     store.add({ subId: subId, type: type, blob: file }).onsuccess = function(){
@@ -1304,8 +1205,50 @@ function saveSub(ti, si){
   sub.extra.delay = parseInt(document.getElementById('extraDelay').value) || 30;
   sub.extra.text = document.getElementById('extraText').value.trim();
 
-  saveData(data);
-  renderGhazalSubtopics();
+  const kFile = document.getElementById('subKImg').files[0];
+  const mFile = document.getElementById('subMImg').files[0];
+  const extraFile = document.getElementById('extraMedia').files[0];
+
+  let pending = 0;
+  if(kFile) pending++;
+  if(mFile) pending++;
+  if(extraFile) pending++;
+
+  if(pending === 0){
+    saveData(data);
+    renderGhazalSubtopics();
+    return;
+  }
+
+  let done = 0;
+  function checkDone() {
+    done++;
+    if(done === pending){
+      saveData(data);
+      renderGhazalSubtopics();
+    }
+  }
+
+  if(kFile){
+    const r = new FileReader();
+    r.onload = e => { sub.kImg = e.target.result; checkDone(); };
+    r.readAsDataURL(kFile);
+  }
+  if(mFile){
+    const r = new FileReader();
+    r.onload = e => { sub.mImg = e.target.result; checkDone(); };
+    r.readAsDataURL(mFile);
+  }
+  if(extraFile){
+    const r = new FileReader();
+    r.onload = e => {
+      if(extraFile.type.startsWith('image')) sub.extra.img = e.target.result;
+      else if(extraFile.type.startsWith('video')) sub.extra.video = e.target.result;
+      else if(extraFile.type.startsWith('audio')) sub.extra.audio = e.target.result;
+      checkDone();
+    };
+    r.readAsDataURL(extraFile);
+  }
 }
 
 function openProof(ti, si, role){
@@ -1347,16 +1290,8 @@ function submitProof(ti, si, role, score){
   const store = transaction.objectStore('proofs');
   
   const proofItem = {
-    title: 'Task: ' + s.title,
-    type: s.proof,
-    blob: file,
-    by: role,
-    score: score,
-    status: 'pending',
-    subId: s.id,
-    ti: ti,
-    si: si,
-    time: Date.now()
+    title: 'Task: ' + s.title, type: s.proof, blob: file, by: role, score: score,
+    status: 'pending', subId: s.id, ti: ti, si: si, time: Date.now()
   };
 
   store.add(proofItem).onsuccess = function() {
@@ -1371,7 +1306,6 @@ function findNextAvailable(callback){
   const store = transaction.objectStore('proofs');
   store.getAll().onsuccess = function(e){
     const proofs = e.target.result || [];
-    // تسک‌هایی که یا اثبات عادی یا تنبیه دارند کامل شده‌اند
     const completedSubIds = new Set();
     proofs.forEach(p => {
       if (p.subId && (p.isPunishment || !p.isExtra)) {
