@@ -240,7 +240,7 @@ function logout(){
   const r = localStorage.getItem('role');
   if(r){
     localStorage.removeItem('login_time_' + r);
-    localStorage.removeItem('popup_shown_' + r);
+    // popup_shown رو دیگه پاک نمی‌کنیم تا فقط یک‌بار نشون داده بشه
   }
   localStorage.setItem('role', 'guest');
   if(statusCheckInterval) clearInterval(statusCheckInterval);
@@ -320,6 +320,7 @@ function checkGhazalOnlineStatus(role){
     led.className = 'led-online';
     text.innerText = 'آنلاین';
 
+    // فقط یک‌بار در کل عمر مرورگر پاپ‌آپ نشون بده
     const popupShownKey = 'popup_shown_' + role;
     if(!localStorage.getItem(popupShownKey) && role !== 'ghazal'){
       localStorage.setItem(popupShownKey, 'true');
@@ -378,10 +379,10 @@ function renderGhazalTopics(){
         <option value="30">۳۰</option>
       </select>
 
-      <label class="text-sm text-pink-300 mt-2 block">آپلود عکس/گیف پوزیشن کیارش برای تاپیک:</label>
+      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن کیارش:</label>
       <input type="file" id="newTopicKImg" accept="image/*">
 
-      <label class="text-sm text-pink-300 mt-2 block">آپلود عکس/گیف پوزیشن محمد برای تاپیک:</label>
+      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن محمد:</label>
       <input type="file" id="newTopicMImg" accept="image/*">
 
       <button onclick="addTopic()" class="btn-pink">اضافه کردن تاپیک</button>
@@ -462,8 +463,8 @@ function renderGhazalSettings(){
       <p class="text-xs text-gray-400 mb-3">می‌توانید از تمام تنظیمات، تاپیک‌ها، ساب‌تاپیک‌ها، فایل‌ها و بخش Extra خروجی کامل بگیرید.</p>
       <button onclick="exportDataJSON()" class="btn-pink mb-2">خروجی گرفتن از اطلاعات (Export JSON)</button>
       
-      <label class="text-sm text-gray-400 mt-3 block">بارگذاری فایل پشتیبان (Import JSON):</label>
-      <input type="file" id="importFile" accept=".json" class="mb-2">
+      <label class="text-sm text-gray-400 mt-3 block">بارگذاری فایل پشتیبان (Import):</label>
+      <input type="file" id="importFile" accept="*/*" class="mb-2">
       <button onclick="importDataJSON()" class="btn2">بارگذاری و جایگزینی اطلاعات</button>
     </div>
 
@@ -519,7 +520,7 @@ function exportDataJSON(){
 function importDataJSON(){
   const fileInput = document.getElementById('importFile');
   if(!fileInput.files || !fileInput.files[0]) {
-    alert('لطفاً ابتدا یک فایل JSON انتخاب کنید.');
+    alert('لطفاً ابتدا یک فایل انتخاب کنید.');
     return;
   }
   
@@ -539,7 +540,7 @@ function importDataJSON(){
       fileInput.value = '';
       renderGhazalSettings();
     } catch(err) {
-      alert('خطا در خواندن فایل JSON. ساختار فایل معتبر نیست.');
+      alert('خطا در خواندن فایل. ساختار فایل معتبر نیست یا JSON نیست.');
       fileInput.value = '';
     }
   };
@@ -590,18 +591,18 @@ function loadProofs(){
       const statusColor = status === 'approved' ? 'text-green-400' : status === 'rejected' ? 'text-red-400' : 'text-yellow-400';
       html += `
         <div class="bg-black border border-gray-800 rounded-lg p-3 mb-3 text-sm">
-          <div class="font-medium text-pink-300 mb-1">${p.title}${isPunish}</div>
+          <div class="font-medium text-pink-300 mb-1">\( {p.title} \){isPunish}</div>
           <div class="text-xs text-gray-400 mb-2">فرستنده: ${p.by === 'mohammad' ? 'محمد' : 'کیارش'} | امتیاز: ${p.score || 0}</div>
-          <div class="text-xs mb-2 ${statusColor}">${statusText}</div>
+          <div class="text-xs mb-2 \( {statusColor}"> \){statusText}</div>
           <div class="mb-2">
-            ${p.type === 'photo' ? `<img src="${fileUrl}" class="max-w-full rounded max-h-40 object-contain">` : ''}
-            ${p.type === 'video' ? `<video src="${fileUrl}" controls class="w-full rounded max-h-40"></video>` : ''}
-            ${p.type === 'audio' ? `<audio src="${fileUrl}" controls class="w-full"></audio>` : ''}
+            \( {p.type === 'photo' ? `<img src=" \){fileUrl}" class="max-w-full rounded max-h-40 object-contain">` : ''}
+            \( {p.type === 'video' ? `<video src=" \){fileUrl}" controls class="w-full rounded max-h-40"></video>` : ''}
+            \( {p.type === 'audio' ? `<audio src=" \){fileUrl}" controls class="w-full"></audio>` : ''}
           </div>
           <div class="flex gap-2 mt-2">
             ${status === 'pending' ? `
-              <button onclick="approveProof(${p.id},${p.score || 0})" class="btn-green flex-1">تأیید</button>
-              <button onclick="rejectProof(${p.id},${p.score || 0})" class="btn-red flex-1">رد کردن</button>
+              <button onclick="approveProof(\( {p.id}, \){p.score || 0})" class="btn-green flex-1">تأیید</button>
+              <button onclick="rejectProof(\( {p.id}, \){p.score || 0})" class="btn-red flex-1">رد کردن</button>
             ` : ''}
             <button onclick="delProof(${p.id})" class="text-red-400 text-xs underline cursor-pointer">حذف</button>
           </div>
@@ -655,7 +656,7 @@ function renderView(role){
   const cardClass = role === 'mohammad' ? 'neon-card-blue' : 'neon-card-purple';
 
   findNextAvailable(function(next){
-    let html = `<div class="${cardClass}"><h3 class="${role === 'mohammad' ? 'text-blue-400' : 'text-purple-400'} font-bold mb-4 text-lg">تسک فعلی</h3>`;
+    let html = `<div class="\( {cardClass}"><h3 class=" \){role === 'mohammad' ? 'text-blue-400' : 'text-purple-400'} font-bold mb-4 text-lg">تسک فعلی</h3>`;
 
     if(!next){
       html += '<p class="text-center text-green-400">همه تسک‌ها انجام شده‌اند!<br>منتظر بررسی نهایی غزال باش.</p>';
@@ -676,10 +677,10 @@ function renderView(role){
         
         <div class="text-xs text-gray-300 space-y-2 mb-4">
           <div class="font-medium text-white">پوزیشن کیارش: ${s.kPos || '—'}</div>
-          ${s.kImg ? `<div class="mt-1"><img src="${s.kImg}" class="rounded max-h-36 max-w-full object-contain border border-purple-900"></div>` : (t.kImg ? `<div class="mt-1"><img src="${t.kImg}" class="rounded max-h-36 max-w-full object-contain border border-purple-900"></div>` : '')}
+          \( {t.kImg ? `<div class="mt-1"><img src=" \){t.kImg}" class="rounded max-h-36 max-w-full object-contain border border-purple-900"></div>` : ''}
 
           <div class="font-medium text-white mt-2">پوزیشن محمد: ${s.mPos || '—'}</div>
-          ${s.mImg ? `<div class="mt-1"><img src="${s.mImg}" class="rounded max-h-36 max-w-full object-contain border border-blue-900"></div>` : (t.mImg ? `<div class="mt-1"><img src="${t.mImg}" class="rounded max-h-36 max-w-full object-contain border border-blue-900"></div>` : '')}
+          \( {t.mImg ? `<div class="mt-1"><img src=" \){t.mImg}" class="rounded max-h-36 max-w-full object-contain border border-blue-900"></div>` : ''}
 
           <div class="mt-2">آه و ناله: ${s.moan ? 'الزامی' : 'نیاز نیست'}</div>
           ${s.hum ? `<div class="text-red-400 mt-1">تحقیر: ${s.hum}</div>` : ''}
@@ -692,16 +693,15 @@ function renderView(role){
           <button onclick="playManualAudio()" class="btn2 flex items-center justify-center gap-2">🔊 پخش صوت دستورالعمل غزال</button>
         </div>
 
-        <button id="startTaskBtn" onclick="startTask(${next.ti}, ${next.si}, '${role}')" class="btn-green ${isStarted ? 'btn-started' : ''}">${isStarted ? 'در حال انجام' : 'شروع'}</button>
+        <button id="startTaskBtn" onclick="startTask(${next.ti}, \( {next.si}, ' \){role}')" class="btn-green \( {isStarted ? 'btn-started' : ''}"> \){isStarted ? 'در حال انجام' : 'شروع'}</button>
         
-        <button onclick="openProof(${next.ti}, ${next.si}, '${role}')" class="${role === 'mohammad' ? 'btn-blue' : 'btn-purple'} mt-3">ثبت اثبات این تسک</button>
-        <button onclick="showPunishments(${next.ti}, ${next.si}, '${role}')" class="btn2 mt-2">رد کردن این تسک (انتخاب تنبیه)</button>
+        <button onclick="openProof(${next.ti}, \( {next.si}, ' \){role}')" class="${role === 'mohammad' ? 'btn-blue' : 'btn-purple'} mt-3">ثبت اثبات این تسک</button>
+        <button onclick="showPunishments(${next.ti}, \( {next.si}, ' \){role}')" class="btn2 mt-2">رد کردن این تسک (انتخاب تنبیه)</button>
       </div>
     `;
     document.getElementById('content').innerHTML = html;
     loadMediaForSub(s.id || (next.ti + '_' + next.si), role);
 
-    // مدیریت تایمر Extra اگر تنظیم شده باشد و دکمه شروع زده شده باشد
     if(isStarted && s.extra && s.extra.enabled){
       setupExtraTimer(s, next.ti, next.si, role);
     }
@@ -759,7 +759,6 @@ function loadMediaForSub(subId, role){
       activeAudioElement = new Audio(audioBlobUrl);
       document.getElementById('manualAudioPlayBox').classList.remove('hidden');
       
-      // پخش خودکار یک‌بار در هر ورود به صفحه
       activeAudioElement.play().catch(err => {
         console.log("مرورگر اجازه پخش خودکار بدون تعامل را نداد:", err);
       });
@@ -856,8 +855,8 @@ function showPunishments(ti, si, role){
     <div class="${cardClass}">
       <h3 class="${role === 'mohammad' ? 'text-blue-400' : 'text-purple-400'} font-bold mb-3">انتخاب تنبیه</h3>
       <p class="text-sm mb-4">تسک «${s.title}» رو رد کردی. یکی از تنبیه‌ها رو انتخاب کن:</p>
-      <button onclick="choosePunishment(${ti}, ${si}, '${role}', '${p1.replace(/'/g, "\\'")}', 1)" class="${btnClass} mb-3">تنبیه ۱: ${p1}</button>
-      <button onclick="choosePunishment(${ti}, ${si}, '${role}', '${p2.replace(/'/g, "\\'")}', 2)" class="${btnClass} mb-3">تنبیه ۲: ${p2}</button>
+      <button onclick="choosePunishment(${ti}, \( {si}, ' \){role}', '\( {p1.replace(/'/g, "\\'")}', 1)" class=" \){btnClass} mb-3">تنبیه ۱: ${p1}</button>
+      <button onclick="choosePunishment(${ti}, \( {si}, ' \){role}', '\( {p2.replace(/'/g, "\\'")}', 2)" class=" \){btnClass} mb-3">تنبیه ۲: ${p2}</button>
       <button onclick="renderView('${role}')" class="btn2">انصراف</button>
     </div>
   `;
@@ -872,7 +871,7 @@ function choosePunishment(ti, si, role, punishText, num){
       <h3 class="${role === 'mohammad' ? 'text-blue-400' : 'text-purple-400'} font-bold mb-2">ثبت اثبات تنبیه ${num}</h3>
       <p class="text-sm mb-3">${punishText}</p>
       <input type="file" id="file" accept="image/*,video/*,audio/*">
-      <button onclick="submitPunishment(${ti}, ${si}, '${role}', '${punishText.replace(/'/g, "\\'")}')" class="${btnClass}">ارسال اثبات تنبیه</button>
+      <button onclick="submitPunishment(${ti}, \( {si}, ' \){role}', '\( {punishText.replace(/'/g, "\\'")}')" class=" \){btnClass}">ارسال اثبات تنبیه</button>
       <button onclick="renderView('${role}')" class="btn2 mt-2">انصراف</button>
     </div>
   `;
@@ -991,12 +990,12 @@ function editTopic(ti){
         <option value="30" ${t.score==30?'selected':''}>۳۰</option>
       </select>
 
-      <label class="text-sm text-pink-300 mt-2 block">پوزیشن کیارش (عکس/گیف):</label>
-      ${t.kImg ? `<div class="mb-2"><img src="${t.kImg}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'k')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
+      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن کیارش:</label>
+      \( {t.kImg ? `<div class="mb-2"><img src=" \){t.kImg}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'k')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
       <input type="file" id="editTopicKImg" accept="image/*">
 
-      <label class="text-sm text-pink-300 mt-2 block">پوزیشن محمد (عکس/گیف):</label>
-      ${t.mImg ? `<div class="mb-2"><img src="${t.mImg}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'm')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
+      <label class="text-sm text-pink-300 mt-2 block">انتخاب عکس یا گیف پوزیشن محمد:</label>
+      \( {t.mImg ? `<div class="mb-2"><img src=" \){t.mImg}" class="max-h-24 rounded"><button onclick="removeTopicImg(${ti}, 'm')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
       <input type="file" id="editTopicMImg" accept="image/*">
 
       <button onclick="saveTopic(${ti})" class="btn-pink">ذخیره</button>
@@ -1067,7 +1066,7 @@ function addSub(ti){
   if(!data[ti].subs) data[ti].subs = [];
   const subId = 'sub_' + Date.now() + '_' + Math.floor(Math.random()*1000);
   data[ti].subs.push({
-    id: subId, title: title, kPos:'', mImg:'', kImg:'', mPos:'', moan:false, hum:'', p1:'', p2:'', proof:'photo',
+    id: subId, title: title, kPos:'', mPos:'', moan:false, hum:'', p1:'', p2:'', proof:'photo',
     extra: { enabled: false, delay: 30, text: '', img: '', audio: '', video: '' }
   });
   saveData(data);
@@ -1093,16 +1092,8 @@ function editSub(ti, si){
       <label class="text-sm text-gray-400">پوزیشن کیارش (متن)</label>
       <input id="kPos" value="${s.kPos || ''}">
 
-      <label class="text-sm text-pink-300 mt-2 block">آپلود عکس/گیف پوزیشن کیارش:</label>
-      ${s.kImg ? `<div class="mb-2"><img src="${s.kImg}" class="max-h-24 rounded"><button onclick="removeSubImg(${ti},${si}, 'k')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
-      <input type="file" id="subKImg" accept="image/*">
-
       <label class="text-sm text-gray-400 mt-2">پوزیشن محمد (متن)</label>
       <input id="mPos" value="${s.mPos || ''}">
-
-      <label class="text-sm text-pink-300 mt-2 block">آپلود عکس/گیف پوزیشن محمد:</label>
-      ${s.mImg ? `<div class="mb-2"><img src="${s.mImg}" class="max-h-24 rounded"><button onclick="removeSubImg(${ti},${si}, 'm')" class="text-red-400 text-xs underline mt-1 block">حذف این عکس</button></div>` : ''}
-      <input type="file" id="subMImg" accept="image/*">
 
       <label class="flex items-center gap-2 text-sm my-3">
         <input type="checkbox" id="moan" ${s.moan ? 'checked' : ''}>
@@ -1147,14 +1138,6 @@ function editSub(ti, si){
   loadCurrentMedia(s.id);
 }
 
-function removeSubImg(ti, si, target){
-  const data = getData();
-  if(target === 'k') data[ti].subs[si].kImg = '';
-  if(target === 'm') data[ti].subs[si].mImg = '';
-  saveData(data);
-  editSub(ti, si);
-}
-
 function loadCurrentMedia(subId){
   if(!db) return;
   const transaction = db.transaction(['media'], 'readonly');
@@ -1176,7 +1159,7 @@ function loadCurrentMedia(subId){
       if(m.type === 'photo') html += `<img src="${url}" class="max-w-full rounded max-h-28">`;
       else if(m.type === 'video') html += `<video src="${url}" controls class="w-full rounded max-h-28"></video>`;
       else html += `<audio src="${url}" controls class="w-full"></audio>`;
-      html += `<button onclick="deleteMedia(${m.id}, '${subId}')" class="text-red-400 text-xs mt-1 underline cursor-pointer block">حذف این فایل</button></div>`;
+      html += `<button onclick="deleteMedia(\( {m.id}, ' \){subId}')" class="text-red-400 text-xs mt-1 underline cursor-pointer block">حذف این فایل</button></div>`;
     });
     div.innerHTML = html;
   };
@@ -1226,38 +1209,8 @@ function saveSub(ti, si){
   sub.extra.delay = parseInt(document.getElementById('extraDelay').value) || 30;
   sub.extra.text = document.getElementById('extraText').value.trim();
 
-  const kFile = document.getElementById('subKImg').files[0];
-  const mFile = document.getElementById('subMImg').files[0];
-
-  let pending = 0;
-  if(kFile) pending++;
-  if(mFile) pending++;
-
-  if(pending === 0){
-    saveData(data);
-    renderGhazalSubtopics();
-    return;
-  }
-
-  let done = 0;
-  if(kFile){
-    const r = new FileReader();
-    r.onload = function(e){
-      sub.kImg = e.target.result;
-      done++;
-      if(done === pending){ saveData(data); renderGhazalSubtopics(); }
-    };
-    r.readAsDataURL(kFile);
-  }
-  if(mFile){
-    const r = new FileReader();
-    r.onload = function(e){
-      sub.mImg = e.target.result;
-      done++;
-      if(done === pending){ saveData(data); renderGhazalSubtopics(); }
-    };
-    r.readAsDataURL(mFile);
-  }
+  saveData(data);
+  renderGhazalSubtopics();
 }
 
 function openProof(ti, si, role){
@@ -1282,7 +1235,7 @@ function openProof(ti, si, role){
       </div>
 
       <input type="file" id="file" accept="${accept}">
-      <button onclick="submitProof(${ti}, ${si}, '${role}', ${topicScore})" class="${btnClass}">ارسال اثبات</button>
+      <button onclick="submitProof(${ti}, \( {si}, ' \){role}', \( {topicScore})" class=" \){btnClass}">ارسال اثبات</button>
       <button onclick="renderView('${role}')" class="btn2 mt-2">انصراف</button>
     </div>
   `;
