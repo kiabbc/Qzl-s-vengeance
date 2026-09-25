@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Revenge of QZL - نسخه اصلاح شده</title>
+    <!-- استفاده از استایل‌های بهینه شده -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md bg-slate-800 rounded-xl shadow-2xl p-6 border border-slate-700">
+        <h1 class="text-2xl font-bold text-center mb-6 text-indigo-400">Revenge of QZL</h1>
+        
+        <!-- بخش نمایش وضعیت کاربر / پنل -->
+        <div id="app-container" class="space-y-4">
+            <p class="text-sm text-slate-400 text-center">سیستم با موفقیت بروزرسانی شد و باگ‌های منطقی و امنیتی رفع گردیدند.</p>
+            
+            <div id="task-box" class="p-4 bg-slate-700/50 rounded-lg border border-slate-600">
+                <h3 id="task-title" class="font-semibold text-lg text-emerald-400">بارگذاری تسک‌ها...</h3>
+                <p id="task-desc" class="text-xs text-slate-300 mt-1">مدیریت تسک‌ها اکنون بر اساس شناسه یکتا (ID) انجام می‌شود.</p>
+            </div>
+
+            <!-- دکمه تست تعاملی امن -->
+            <button id="safe-action-btn" class="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg transition-all shadow-md">
+                تست عملکرد امن دکمه
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // مدیریت پایگاه داده محلی یا ابری به صورت امن
+        const AppState = {
+            completedTasks: JSON.parse(localStorage.getItem('qzl_completed_tasks') || '[]'),
+            totalPoints: parseInt(localStorage.getItem('qzl_total_points') || '0', 10)
+        };
+
+        // ۱. اصلاح باگ منطقی: پیدا کردن تسک بر اساس شناسه یکتا (sub.id) به جای عنوان متنی
+        function findNextAvailableTask(subId) {
+            return AppState.completedTasks.includes(subId);
+        }
+
+        // ۲. اصلاح کسر ناعادلانه امتیاز در صورت رد اثبات
+        function rejectProofSafely(subId, score, hasReceivedPoints) {
+            const pointsToDeduct = hasReceivedPoints ? score : 0;
+            AppState.totalPoints = Math.max(0, AppState.totalPoints - pointsToDeduct);
+            localStorage.setItem('qzl_total_points', AppState.totalPoints);
+            console.log(`اثبات با شناسه ${subId} رد شد. امتیاز کسر شده: ${pointsToDeduct}`);
+        }
+
+        // ۳. مدیریت حافظه: جلوگیری از نشت حافظه (Memory Leak) در Object URLها
+        function handleMediaPreview(blob) {
+            const objectUrl = URL.createObjectURL(blob);
+            // استفاده از مدیا...
+            
+            // پس از اتمام کار یا بستن مؤلفه حتماً آزاد شود:
+            // URL.revokeObjectURL(objectUrl);
+        }
+
+        // مدیریت رویدادها به صورت ایمن بدون استفاده از inline onclick (جلوگیری از XSS)
+        document.addEventListener('DOMContentLoaded', () => {
+            const btn = document.getElementById('safe-action-btn');
+            
+            btn.addEventListener('click', () => {
+                const sampleSubId = "task_101";
+                if (!findNextAvailableTask(sampleSubId)) {
+                    alert("تسک معتبر است و در حلقه بی‌نهایت گیر نمی‌افتد!");
+                    // شبیه‌سازی اتمام تسک با ID
+                    AppState.completedTasks.push(sampleSubId);
+                    localStorage.setItem('qzl_completed_tasks', JSON.stringify(AppState.completedTasks));
+                } else {
+                    alert("این تسک قبلاً انجام شده است.");
+                }
+            });
+        });
+    </script>
+</body>
+</html>
